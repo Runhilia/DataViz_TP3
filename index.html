@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8" />
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+    }
+    path:hover {
+        fill: #666;
+    }
+    .hidden {
+        display: none;
+    }
+    div.tooltip {
+        color: #222;
+        background-color: #fff;
+        padding: .5em;
+        text-shadow: #f5f5f5 0 1px 0;
+        border-radius: 2px;
+        opacity: 0.9;
+        position: absolute;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Visualisation de la quantité de déchets DEEE par département selon les années</h1>
+
+  <div>
+    <input id="slider" type="range" value="2009" min="2009" max="2021" step="2" /><br/>
+    <span id="day"></span>
+  </div>
+
+  <script>
+    var width = 700,
+      height = 580;
+
+    var svg = d3
+      .select("body")
+      .append("svg")
+      .attr("width", width)
+      .attr("height", height);
+
+    var tooltip = d3.select('body')
+                    .append('div')
+                    .attr('class', 'hidden tooltip');
+
+    var g = svg.append("g");
+
+    var projection = d3
+      .geoConicConformal()
+      .center([2.454071, 46.279229])
+      .scale([2800]);
+
+    var path = d3.geoPath().projection(projection);
+
+    // Définition de la plage de couleurs
+    var color = d3
+      .scaleQuantize()
+      .range(["#edf8e9", "#bae4b3", "#74c476", "#31a354", "#006d2c"]);    
+
+    function drawMap(years){
+        d3.select('#day').html(years);
+        d3.csv("SINOE14_TonnageDecheterieParTypeDechet.csv").then(function (data) {
+            
+            var cleanData = data.filter(function (d) {
+                return d.L_TYP_REG_DECHET  === "DEEE" && d.ANNEE == years;
+            });
+
+            d3.json("departements-version-simplifiee.geojson").then(function (json) {
+
+                //On parcours les departements du GeoJSON un par un
+                for (var j = 0; j < json.features.length; j++) {
+                    var departement = json.features[j].properties.code;
+                    
+                    var anneeDepChoisi = cleanData.filter(function (d) {
+                        return d.C_DEPT === departement;
+                    })
+
+                    json.features[j].value = parseFloat(cleanData[j].TONNAGE_T);
+                }
+
+                color.domain([
+                    d3.min(json.features, function (d) {
+                        return d.value;
+                    }),
+                    d3.max(json.features, function (d) {
+                        return d.value;
+                    })
+                ]);
+        
+                // Ajout des départements sur la carte
+                g.selectAll("path")
+                .data(json.features)
+                .join("path")
+                .attr("d", path)
+                .attr("fill", function (d) {
+                    var value = d.value;
+                    if (value) {
+                        return color(value);
+                    } else {
+                        return "#ccc";
+                    }
+                })
+                .on('mousemove', function(e, d) {
+                    // on recupere la position de la souris, e est l'object event d
+                    var mousePosition = [e.x, e.y];
+                    // on affiche le toolip
+                    tooltip.classed('hidden', false)
+                        // on positionne le tooltip en fonction de la position de la souris
+                        .attr('style', 'left:' + (mousePosition[0] + 15) +
+                                'px; top:' + (mousePosition[1] - 35) + 'px')
+                            // on recupere le nom de l'etat 
+                        .html(d.properties.nom + ' : ' + d.value + ' tonnes');
+                })
+                .on('mouseout', function() {
+                    // on cache le toolip
+                    tooltip.classed('hidden', true);
+                })
+            });
+        });
+    }
+    //Affichage de la carte par défaut
+    const defaultYear = document.getElementById("slider").value;
+    drawMap(defaultYear);
+
+    //Affichage de la carte selon le slider
+    d3.select("#slider").on("input", function() {
+        drawMap(+this.value);
+    });
+    
+  </script>
+</body>
